@@ -2,19 +2,20 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import joi from "joi";
+dotenv.config();
 
 import connection from "./database.js";
 
 const server = express();
 server.use(express.json());
 server.use(cors());
-dotenv.config();
 
 //CRUD de Categorias
 server.get("/categories", async (req, res) => {
 	try {
-		const query = connection.query(`SELECT * FROM categories;`);
-		res.send(query);
+		const Myquery = await connection.query(`SELECT * FROM categories;`);
+
+		res.send(Myquery.rows);
 	} catch (error) {
 		console.error(error);
 	}
@@ -37,10 +38,12 @@ server.post("/categories", async (req, res) => {
 		if (query) {
 			return res.status(409).json;
 		}
-		await connection.query(`
+		await connection.query(
+			`
 			INSERT INTO categories (name) 
-			VALUES ('${name}');
-		`);
+			VALUES ('$1');`,
+			[name]
+		);
 		res.status(201);
 	} catch (error) {
 		console.error(error);
@@ -81,17 +84,19 @@ server.post("/games", async (req, res) => {
 		if (query) {
 			return res.sendStatus(409);
 		}
-		await connection.query(`
+		await connection.query(
+			`
 			INSERT INTO games 
 			(name, image, "stockTotal", "categoryId", "pricePerDay") 
-			VALUES (
-				${newGame.name},
-				${newGame.image},
-				${newGame.stockTotal},
-				${newGame.categoryId},
-				${newGame.pricePerDay}
-			);
-		`);
+			VALUES ($1, $2, $3, $4, $5, );`,
+			[
+				newGame.name,
+				newGame.image,
+				newGame.stockTotal,
+				newGame.categoryId,
+				newGame.pricePerDay,
+			]
+		);
 		return res.sendStatus(201);
 	} catch (error) {
 		console.log(error);
@@ -99,16 +104,16 @@ server.post("/games", async (req, res) => {
 });
 
 //CRUD de Clientes
-server.get("/customers/?cpf", async (req, res) => {
-	const cpf = req.params.cpf;
+server.get("/customers", async (req, res) => {
+	const cpf = req.query.cpf;
 	try {
 		if (cpf) {
-			const query = connection.query(`
+			const query = await connection.query(`
 			SELECT * FROM customers WHERE cpf = LIKE '${cpf}%';`);
 			return res.send(query.rows);
 		}
-		const query = connection.query(`SELECT * FROM customers;`);
-		res.send(query.rows);
+		const Myquery = await connection.query(`SELECT * FROM customers;`);
+		res.send(Myquery.rows);
 	} catch (error) {
 		console.error(error);
 	}
@@ -155,15 +160,18 @@ server.post("/customers", async (req, res) => {
 		if (query) {
 			return res.sendStatus(409);
 		}
-		await connection.query(`
+		await connection.query(
+			`
 			INSERT INTO customers (name, phone, cpf, birthday) 
-			VALUES (
-				'${newCustomer.name}', 
-				${newCustomer.phone}, 
-				${newCustomer.cpf}, 
-				'${newCustomer.birthday}', 
-			)
-		`);
+			VALUES (' $1, $2, $3, "$4",
+			) ;`,
+			[
+				newCustomer.name,
+				newCustomer.phone,
+				newCustomer.cpf,
+				newCustomer.birthday,
+			]
+		);
 		return res.sendStatus(201);
 	} catch (error) {
 		console.log(error);
@@ -219,13 +227,65 @@ server.get("/rentals", async (req, res) => {
 	}
 });
 server.post("/rentals", async (req, res) => {
+	const newReq = {
+		customerId: req.params.customerId,
+		gameId: req.params.gameId,
+		daysRented: req.params.daysRented,
+	};
+	if (!(newReq.daysRented > 0)) {
+		return res.sendStatus(400);
+	}
 
-	
-
+	try {
+		const queryCustomer = await connection.query(`
+		SELECT * FROM customers WHERE customerId = '${newReq.customerId}'		
+		`);
+		const queryGame = await connection.query(`
+		SELECT * FROM games WHERE gameId = '${newReq.gameId}'
+		`);
+		if (!queryCustomer || !queryGame) {
+			return res.sendStatus(400);
+		}
+		const gameCost = queryGame.pricePerDay * newReq.daysRented;
+		await connection.query(
+			`
+		INSERT INTO rentals (
+			"customerId",
+			"gameId",
+			"rentDate",
+			"daysRented",
+			"returnDate",
+			"originalPrice",
+			"delayFee",
+			)
+			VALUES (
+				$1,
+				$2,
+				NOW(),
+				$3,
+				null,
+				$4,
+				null
+			);`,
+			[newReq.customerId, newReq.gameId, newReq.daysRented, gameCost]
+		);
+		res.sendStatus(201);
+	} catch (error) {
+		console.error(error);
+	}
 });
 server.post("/rentals/:id/return", async (req, res) => {});
-server.delete("/rentals/:id", async (req, res) => {});
+server.delete("/rentals/:id", async (req, res) => {
+	try {
+	} catch (error) {
+		console.error(error);
+	}
+});
 
-server.listen(process.env.PORT, () => {
+server.get("/status", (req, res) => {
+	res.send("I'm Alive!");
+});
+
+server.listen(4000, () => {
 	console.log("listening on port " + process.env.PORT);
-}); 
+});
